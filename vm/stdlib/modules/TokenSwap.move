@@ -5,33 +5,6 @@ module LiquidityToken {
     struct LiquidityToken<X, Y> { }
 }
 
-/// Helper functions to help user use TokenSwap
-module TokenSwapHelper {
-    public fun quote(amount_x: u128, reserve_x: u128, reserve_y: u128): u128 {
-        assert(amount_x > 0, 400);
-        assert(reserve_x > 0 && reserve_y > 0, 410);
-        let amount_y = amount_x * reserve_y / reserve_x;
-        amount_y
-    }
-
-    public fun get_amount_out(amount_in: u128, reserve_in: u128, reserve_out: u128): u128 {
-        assert(amount_in > 0, 400);
-        assert(reserve_in > 0 && reserve_out > 0, 410);
-        let amount_in_with_fee = amount_in * 997;
-        let numerator = amount_in_with_fee * reserve_out;
-        let denominator = reserve_in * 1000 + amount_in_with_fee;
-        numerator / denominator
-    }
-
-    public fun get_amount_in(amount_out: u128, reserve_in: u128, reserve_out: u128): u128 {
-        assert(amount_out > 0, 400);
-        assert(reserve_in > 0 && reserve_out > 0, 410);
-        let numerator = reserve_in * amount_out * 1000;
-        let denominator = (reserve_out - amount_out) * 997;
-        numerator / denominator + 1
-    }
-}
-
 /// Token Swap
 module TokenSwap {
     use 0x1::Token;
@@ -58,7 +31,7 @@ module TokenSwap {
     const DUPLICATE_TOKEN: u64 = 4000;
     const INVALID_TOKEN_PAIR: u64 = 4001;
 
-    // TODO: check X,Y is token, and X,Y is sorted.
+    // TODO: check X,Y is token.
     // for now, only admin can register token pair
     public fun register_swap_pair<X, Y>(signer: &signer) {
         assert(compare_token<X, Y>() == 1, INVALID_TOKEN_PAIR);
@@ -89,11 +62,11 @@ module TokenSwap {
     }
 
     /// Liquidity Provider's methods
+    /// type args, X, Y should be sorted.
     public fun mint<X, Y>(
         x: Token::Token<X>,
         y: Token::Token<Y>,
     ): Token::Token<LiquidityToken<X, Y>> acquires TokenPair, LiquidityTokenCapability {
-        assert(compare_token<X, Y>() == 1, INVALID_TOKEN_PAIR);
         let total_supply: u128 = Token::market_cap<LiquidityToken<X, Y>>();
         let x_value = Token::value<X>(&x);
         let y_value = Token::value<Y>(&y);
@@ -125,7 +98,6 @@ module TokenSwap {
     public fun burn<X, Y>(
         to_burn: Token::Token<LiquidityToken<X, Y>>,
     ): (Token::Token<X>, Token::Token<Y>) acquires TokenPair, LiquidityTokenCapability {
-        assert(compare_token<X, Y>() == 1, INVALID_TOKEN_PAIR);
         let to_burn_value = (Token::value(&to_burn) as u128);
         let token_pair = borrow_global_mut<TokenPair<X, Y>>(admin_address());
         let x_reserve = (Token::value(&token_pair.token_x_reserve) as u128);
@@ -148,22 +120,14 @@ module TokenSwap {
 
     //// User methods ////////
 
+
     /// Get reserves of a token pair.
-    /// And the order of return values are based on the order of type parameters.
+    /// The order of type args should be sorted.
     public fun get_reserves<X, Y>(): (u128, u128) acquires TokenPair {
-        let order = compare_token<X, Y>();
-        assert(order != 0, INVALID_TOKEN_PAIR);
-        if (order == 1) {
-            let token_pair = borrow_global<TokenPair<X, Y>>(admin_address());
-            let x_reserve = Token::value(&token_pair.token_x_reserve);
-            let y_reserve = Token::value(&token_pair.token_y_reserve);
-            (x_reserve, y_reserve)
-        } else {
-            let token_pair = borrow_global<TokenPair<Y, X>>(admin_address());
-            let x_reserve = Token::value(&token_pair.token_y_reserve);
-            let y_reserve = Token::value(&token_pair.token_x_reserve);
-            (x_reserve, y_reserve)
-        }
+        let token_pair = borrow_global<TokenPair<X, Y>>(admin_address());
+        let x_reserve = Token::value(&token_pair.token_x_reserve);
+        let y_reserve = Token::value(&token_pair.token_y_reserve);
+        (x_reserve, y_reserve)
     }
 
     public fun swap<X, Y>(
@@ -172,7 +136,6 @@ module TokenSwap {
         y_in: Token::Token<Y>,
         x_out: u128,
     ): (Token::Token<X>, Token::Token<Y>) acquires TokenPair {
-        assert(compare_token<X, Y>() == 1, INVALID_TOKEN_PAIR);
         let x_in_value = Token::value(&x_in);
         let y_in_value = Token::value(&y_in);
         assert(x_in_value > 0 || y_in_value > 0, 400);

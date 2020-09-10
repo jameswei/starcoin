@@ -2,7 +2,6 @@ address 0x1 {
 module TokenSwapGateway {
     use 0x1::TokenSwap;
     use 0x1::LiquidityToken::LiquidityToken;
-    use 0x1::TokenSwapHelper;
     use 0x1::Account;
     use 0x1::Signer;
     use 0x1::Token;
@@ -10,10 +9,11 @@ module TokenSwapGateway {
     // use 0x1::Debug;
     const INSUFFICIENT_X_AMOUNT: u64 = 1010;
     const INSUFFICIENT_Y_AMOUNT: u64 = 1011;
+    const INVALID_TOKEN_PAIR: u64 = 4001;
 
     public fun liquidity<X, Y>(account: address): u128 {
         let order = TokenSwap::compare_token<X, Y>();
-        assert(order != 0, 1000);
+        assert(order != 0, INVALID_TOKEN_PAIR);
         if (order == 1) {
             Account::balance<LiquidityToken<X, Y>>(account)
         } else {
@@ -23,7 +23,7 @@ module TokenSwapGateway {
 
     public fun total_liquidity<X, Y>(): u128 {
         let order = TokenSwap::compare_token<X, Y>();
-        assert(order != 0, 1000);
+        assert(order != 0, INVALID_TOKEN_PAIR);
         if (order == 1) {
             Token::market_cap<LiquidityToken<X, Y>>()
         } else {
@@ -39,7 +39,7 @@ module TokenSwapGateway {
         amount_y_min: u128,
     ) {
         let order = TokenSwap::compare_token<X, Y>();
-        assert(order != 0, 1000);
+        assert(order != 0, INVALID_TOKEN_PAIR);
         if (order == 1) {
             _add_liquidity<X, Y>(
                 signer,
@@ -87,20 +87,16 @@ module TokenSwapGateway {
         amount_x_min: u128,
         amount_y_min: u128,
     ): (u128, u128) {
-        let (reserve_x, reserve_y) = TokenSwap::get_reserves<X, Y>();
+        let (reserve_x, reserve_y) = get_reserves<X, Y>();
         if (reserve_x == 0 && reserve_y == 0) {
             return (amount_x_desired, amount_y_desired)
         } else {
-            let amount_y_optimal = TokenSwapHelper::quote(amount_x_desired, reserve_x, reserve_y);
+            let amount_y_optimal = quote(amount_x_desired, reserve_x, reserve_y);
             if (amount_y_optimal <= amount_y_desired) {
                 assert(amount_y_optimal >= amount_y_min, INSUFFICIENT_Y_AMOUNT);
                 return (amount_x_desired, amount_y_optimal)
             } else {
-                let amount_x_optimal = TokenSwapHelper::quote(
-                    amount_y_desired,
-                    reserve_y,
-                    reserve_x,
-                );
+                let amount_x_optimal = quote(amount_y_desired, reserve_y, reserve_x);
                 assert(amount_x_optimal <= amount_x_desired, 1000);
                 assert(amount_x_optimal >= amount_x_min, INSUFFICIENT_X_AMOUNT);
                 return (amount_x_optimal, amount_y_desired)
@@ -115,7 +111,7 @@ module TokenSwapGateway {
         amount_y_min: u128,
     ) {
         let order = TokenSwap::compare_token<X, Y>();
-        assert(order != 0, 1000);
+        assert(order != 0, INVALID_TOKEN_PAIR);
         if (order == 1) {
             _remove_liquidity<X, Y>(signer, liquidity, amount_x_min, amount_y_min);
         } else {
@@ -143,10 +139,10 @@ module TokenSwapGateway {
         amount_y_out_min: u128,
     ) {
         let order = TokenSwap::compare_token<X, Y>();
-        assert(order != 0, 1000);
+        assert(order != 0, INVALID_TOKEN_PAIR);
         // calculate actual y out
-        let (reserve_x, reserve_y) = TokenSwap::get_reserves<X, Y>();
-        let y_out = TokenSwapHelper::get_amount_out(amount_x_in, reserve_x, reserve_y);
+        let (reserve_x, reserve_y) = get_reserves<X, Y>();
+        let y_out = get_amount_out(amount_x_in, reserve_x, reserve_y);
         assert(y_out >= amount_y_out_min, 4000);
         // do actual swap
         let token_x = Account::withdraw<X>(signer, amount_x_in);
@@ -166,10 +162,10 @@ module TokenSwapGateway {
         amount_y_out: u128,
     ) {
         let order = TokenSwap::compare_token<X, Y>();
-        assert(order != 0, 1000);
+        assert(order != 0, INVALID_TOKEN_PAIR);
         // calculate actual y out
-        let (reserve_x, reserve_y) = TokenSwap::get_reserves<X, Y>();
-        let x_in = TokenSwapHelper::get_amount_in(amount_y_out, reserve_x, reserve_y);
+        let (reserve_x, reserve_y) = get_reserves<X, Y>();
+        let x_in = get_amount_in(amount_y_out, reserve_x, reserve_y);
         assert(x_in <= amount_x_in_max, 4000);
         // do actual swap
         let token_x = Account::withdraw<X>(signer, x_in);
@@ -183,6 +179,47 @@ module TokenSwapGateway {
         };
         Token::destroy_zero(token_x_out);
         Account::deposit(signer, token_y_out);
+    }
+
+    /// Get reserves of a token pair.
+    /// The order of `X`, `Y` doesn't need to be sorted.
+    /// And the order of return values are based on the order of type parameters.
+    public fun get_reserves<X, Y>(): (u128, u128) {
+        let order = TokenSwap::compare_token<X, Y>();
+        assert(order != 0, INVALID_TOKEN_PAIR);
+        if (order == 1) {
+            TokenSwap::get_reserves<X, Y>()
+        } else {
+            let (y, x) = TokenSwap::get_reserves<Y, X>();
+            (x, y)
+        }
+    }
+
+    //// Helper functions to help user use TokenSwap ////
+
+    /// Return amount_y needed to provide liquidity given `amount_x`
+    public fun quote(amount_x: u128, reserve_x: u128, reserve_y: u128): u128 {
+        assert(amount_x > 0, 400);
+        assert(reserve_x > 0 && reserve_y > 0, 410);
+        let amount_y = amount_x * reserve_y / reserve_x;
+        amount_y
+    }
+
+    public fun get_amount_out(amount_in: u128, reserve_in: u128, reserve_out: u128): u128 {
+        assert(amount_in > 0, 400);
+        assert(reserve_in > 0 && reserve_out > 0, 410);
+        let amount_in_with_fee = amount_in * 997;
+        let numerator = amount_in_with_fee * reserve_out;
+        let denominator = reserve_in * 1000 + amount_in_with_fee;
+        numerator / denominator
+    }
+
+    public fun get_amount_in(amount_out: u128, reserve_in: u128, reserve_out: u128): u128 {
+        assert(amount_out > 0, 400);
+        assert(reserve_in > 0 && reserve_out > 0, 410);
+        let numerator = reserve_in * amount_out * 1000;
+        let denominator = (reserve_out - amount_out) * 997;
+        numerator / denominator + 1
     }
 }
 }

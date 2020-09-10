@@ -71,14 +71,13 @@ script {
     use {{admin}}::Token1;
     use 0x1::Account;
     use 0x1::Signer;
-    use 0x1::TokenSwap;
     fun remove_liquidity(signer: &signer) {
         TokenSwapGateway::remove_liquidity<STC::STC, Token1::Token1>(signer, 10000, 0, 0);
         let token_balance = Account::balance<Token1::Token1>(Signer::address_of(signer));
         let expected = (10000 * 10000) * 2 * 10000 / ((1000000 - 1000)*2);
         assert(token_balance == expected, (token_balance as u64));
 
-        let (stc_reserve, token_reserve) = TokenSwap::get_reserves<STC::STC, Token1::Token1>();
+        let (stc_reserve, token_reserve) = TokenSwapGateway::get_reserves<STC::STC, Token1::Token1>();
         assert(stc_reserve == 10000 * 2 - 10000 * 2 * 10000 / ((1000000 - 1000)*2), (stc_reserve as u64));
         assert(token_reserve == 10000 * 10000 * 2 - expected, (token_reserve as u64));
     }
@@ -89,17 +88,16 @@ script {
 //! sender: exchanger
 script {
     use 0x1::TokenSwapGateway;
-    use 0x1::TokenSwapHelper;
     use 0x1::STC;
     use {{admin}}::Token1;
     use 0x1::Account;
     use 0x1::Signer;
-    use 0x1::TokenSwap;
+
     fun swap_exact_token_for_token(signer: &signer) {
-        let (stc_reserve, token_reserve) = TokenSwap::get_reserves<STC::STC, Token1::Token1>();
+        let (stc_reserve, token_reserve) = TokenSwapGateway::get_reserves<STC::STC, Token1::Token1>();
         TokenSwapGateway::swap_exact_token_for_token<STC::STC, Token1::Token1>(signer, 1000, 0);
         let token_balance = Account::balance<Token1::Token1>(Signer::address_of(signer));
-        let expected_token_balance = TokenSwapHelper::get_amount_out(1000, stc_reserve, token_reserve);
+        let expected_token_balance = TokenSwapGateway::get_amount_out(1000, stc_reserve, token_reserve);
         assert(token_balance == expected_token_balance, (token_balance as u64));
     }
 }
@@ -109,19 +107,17 @@ script {
 //! sender: exchanger
 script {
     use 0x1::TokenSwapGateway;
-    use 0x1::TokenSwapHelper;
     use 0x1::STC;
     use {{admin}}::Token1;
     use 0x1::Account;
     use 0x1::Signer;
-    use 0x1::TokenSwap;
     fun swap_token_for_exact_token(signer: &signer) {
         let stc_balance_before = Account::balance<STC::STC>(Signer::address_of(signer));
-        let (stc_reserve, token_reserve) = TokenSwap::get_reserves<STC::STC, Token1::Token1>();
+        let (stc_reserve, token_reserve) = TokenSwapGateway::get_reserves<STC::STC, Token1::Token1>();
         TokenSwapGateway::swap_token_for_exact_token<STC::STC, Token1::Token1>(signer, 30, 100000);
         let stc_balance_after = Account::balance<STC::STC>(Signer::address_of(signer));
 
-        let expected_balance_change = TokenSwapHelper::get_amount_in(100000, stc_reserve, token_reserve);
+        let expected_balance_change = TokenSwapGateway::get_amount_in(100000, stc_reserve, token_reserve);
         assert(stc_balance_before - stc_balance_after == expected_balance_change, (expected_balance_change as u64));
     }
 }

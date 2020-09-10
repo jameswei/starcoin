@@ -17,6 +17,12 @@ module Token {
         value: u128,
     }
 
+    struct TokenId {
+        address: address,
+        module_name: vector<u8>,
+        name: vector<u8>,
+    }
+
     /// A minting capability allows tokens of type `TokenType` to be minted
     resource struct MintCapability<TokenType> { }
 
@@ -494,6 +500,12 @@ module Token {
 
     spec fun token_code {
         aborts_if false;
+    }
+
+    /// Depreate toke_code in favor of this function.
+    public fun token_id<TokenType>(): TokenId {
+        let (addr, module_name, name) = name_of<TokenType>();
+        TokenId { address: addr, module_name, name }
     }
 
     fun code_to_bytes(addr: address, module_name: vector<u8>, name: vector<u8>): vector<u8> {

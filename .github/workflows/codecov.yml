@@ -19,18 +19,12 @@ jobs:
           components: rustfmt,clippy
       - name: setup environment
         run: bash ./scripts/dev_setup.sh
-      - name: Install grcov and lcov
-        run: |
-          sudo apt-get update
-          sudo apt-get install lcov -y
-          cargo install --force grcov
       - name: Run code coverage
         env:
           RUST_LOG: error
-        run: ./scripts/coverage_report.sh . target/codecov --batch
+        run: cargo +nightly tarpaulin --verbose --all-features --workspace --out Xml
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v1
         with:
-          file: ./target/codecov/lcov_correct.info
           flags: unittests
-          fail_ci_if_error: false
+          fail_ci_if_error: true

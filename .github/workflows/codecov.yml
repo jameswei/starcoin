@@ -22,7 +22,7 @@ jobs:
       - name: Run code coverage
         env:
           RUST_LOG: error
-        run: cargo +nightly tarpaulin --verbose --all-features --workspace --out Xml
+        run: cargo +nightly tarpaulin --verbose --all-features --workspace --no-fail-fast --out Xml
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v1
         with:
